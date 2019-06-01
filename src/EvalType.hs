@@ -3,27 +3,86 @@ module EvalType where
 
 import AST
 import Control.Monad.State
+import StackMap
 
-data Context = Context { -- 可以用某种方式定义上下文，用于记录变量绑定状态
-                       }
-  deriving (Show, Eq)
+type Context = StackMap String Type
 
 type ContextState a = StateT Context Maybe a
 
-isBool :: Expr -> ContextState Type
-isBool e = do
-  et <- eval e
-  case et of
-    TBool -> return TBool
-    _ -> lift Nothing
-
 eval :: Expr -> ContextState Type
-eval (EBoolLit _) = return TBool
-eval (ENot e) = isBool e >> return TBool
--- ... more
-eval _ = undefined
-
+eval expr = let
+    isOfType :: Expr -> Type -> ContextState Type
+    isOfType e t = do
+        et <- eval e
+        if et == t then return t else lift Nothing
+    bothOfType :: (Expr, Expr) -> Type -> ContextState Type
+    bothOfType (e1, e2) t = isOfType e1 t >> isOfType e2 t
+    isEqual :: (Expr, Expr) -> ContextState Type
+    isEqual (e1, e2) = do
+        e1t <- eval e1
+        e2t <- eval e2
+        if e1t == e2t then return e1t else lift Nothing
+    isEquallyFrom :: (Expr, Expr) -> [Type] -> ContextState Type
+    isEquallyFrom (e1, e2) ts = do
+        et <- isEqual (e1, e2)
+        if et `elem` ts then return et else lift Nothing
+    in case expr of
+        EBoolLit _ -> return TBool
+        EIntLit _ -> return TInt
+        ECharLit _ -> return TChar
+        ENot e -> isOfType e TBool
+        EAnd e1 e2 -> bothOfType (e1, e2) TBool
+        EOr e1 e2 -> bothOfType (e1, e2) TBool
+        EAdd e1 e2 -> bothOfType (e1, e2) TInt
+        ESub e1 e2 -> bothOfType (e1, e2) TInt
+        EMul e1 e2 -> bothOfType (e1, e2) TInt
+        EDiv e1 e2 -> bothOfType (e1, e2) TInt
+        EEq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar]
+        ENeq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar]
+        ELt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
+        EGt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
+        ELe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
+        EGe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
+        EIf e1 e2 e3 -> isOfType e1 TBool >> isEqual (e2, e3)
+        ELambda (n, tArg) eBody -> do
+            s <- get
+            put $ push (n, tArg) s
+            tRet <- eval eBody
+            put s
+            return $ TArrow tArg tRet
+        ELet (n, e1) e2 -> do
+            e1t <- eval e1
+            s <- get
+            put $ push (n, e1t) s
+            e2t <- eval e2
+            put s
+            return e2t
+        ELetRec bind (arg, tArg) (body, tRet) expr -> do
+            state <- get
+            let stateWithFunc = push (bind, TArrow tArg tRet) state
+            let stateWithFuncAndArg = push (arg, tArg) stateWithFunc
+            put stateWithFuncAndArg
+            tRet' <- eval body
+            if tRet' == tRet
+            then do
+                put stateWithFunc
+                t <- eval expr
+                put state
+                return t
+            else do
+                put state
+                lift Nothing
+        EVar n -> do
+            s <- get
+            lift $ lookUp n s
+        EApply e1 e2 -> do
+            e1t <- eval e1
+            e2t <- eval e2
+            case (e1t, e2t) of
+                (TArrow t1 t2, t3) -> if t1 == t3 then return t2 else lift Nothing
+                _ -> lift Nothing
+        ECase _ _ -> undefined
+        
 
 evalType :: Program -> Maybe Type
-evalType (Program adts body) = evalStateT (eval body) $
-  Context {  } -- 可以用某种方式定义上下文，用于记录变量绑定状态
+evalType (Program adts body) = evalStateT (eval body) []
