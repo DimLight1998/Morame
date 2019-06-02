@@ -37,12 +37,13 @@ eval expr = let
         ESub e1 e2 -> bothOfType (e1, e2) TInt
         EMul e1 e2 -> bothOfType (e1, e2) TInt
         EDiv e1 e2 -> bothOfType (e1, e2) TInt
-        EEq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar]
-        ENeq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar]
-        ELt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
-        EGt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
-        ELe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
-        EGe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar]
+        EMod e1 e2 -> bothOfType (e1, e2) TInt
+        EEq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar] >> return TBool
+        ENeq e1 e2 -> isEquallyFrom (e1, e2) [TBool, TInt, TChar] >> return TBool
+        ELt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar] >> return TBool
+        EGt e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar] >> return TBool
+        ELe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar] >> return TBool
+        EGe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar] >> return TBool
         EIf e1 e2 e3 -> isOfType e1 TBool >> isEqual (e2, e3)
         ELambda (n, tArg) eBody -> do
             s <- get
@@ -81,7 +82,7 @@ eval expr = let
             case (e1t, e2t) of
                 (TArrow t1 t2, t3) -> if t1 == t3 then return t2 else lift Nothing
                 _ -> lift Nothing
-        ECase _ _ -> undefined
+        ECase expr pes -> undefined -- todo support ADT
         
 
 evalType :: Program -> Maybe Type

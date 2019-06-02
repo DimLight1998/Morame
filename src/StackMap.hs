@@ -13,4 +13,4 @@ pop sm = case sm of
 lookUp :: Eq a => a -> StackMap a b -> Maybe b
 lookUp x sm = case sm of
     [] -> Nothing
-    (x', y) : sm' -> if x == x' then Just y else lookUp sm' x
+    (x', y) : sm' -> if x == x' then Just y else lookUp x sm'
