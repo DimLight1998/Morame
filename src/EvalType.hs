@@ -3,11 +3,27 @@ module EvalType where
 
 import AST
 import Control.Monad.State
+import Control.Monad.Zip
 import StackMap
 
 type Context = StackMap String Type
 
 type ContextState a = StateT Context Maybe a
+
+matchPatternWithType :: [ADT] -> Pattern -> Type -> Maybe Context
+matchPatternWithType adts pat ty = let
+    matchPatternWithTypeAux :: [(String, [Type])] -> Pattern -> Type -> Maybe Context
+    matchPatternWithTypeAux flatAdts pat ty = case pat of
+        PBoolLit _ -> return []
+        PIntLit _ -> return []
+        PCharLit _ -> return []
+        PVar s -> return [(s, ty)]
+        PData name pats -> do
+            types <- lookup name flatAdts
+            if length pats == length types
+            then concat <$> sequence (mzipWith (matchPatternWithTypeAux flatAdts) pats types)
+            else Nothing
+    in matchPatternWithTypeAux (adts >>= (\ (ADT _ s) -> s)) pat ty
 
 eval :: Expr -> ContextState Type
 eval expr = let
@@ -76,14 +92,15 @@ eval expr = let
         EVar n -> do
             s <- get
             lift $ lookUp n s
-        EApply e1 e2 -> do
+        EApply e1 e2 -> do -- todo support ADT
             e1t <- eval e1
             e2t <- eval e2
             case (e1t, e2t) of
                 (TArrow t1 t2, t3) -> if t1 == t3 then return t2 else lift Nothing
                 _ -> lift Nothing
-        ECase expr pes -> undefined -- todo support ADT
-        
+        ECase expr pes -> do
+            et <- eval expr -- will get something like ""
+            undefined
 
 evalType :: Program -> Maybe Type
 evalType (Program adts body) = evalStateT (eval body) []
