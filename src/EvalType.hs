@@ -4,6 +4,8 @@ module EvalType where
 import AST
 import Control.Monad.State
 import Control.Monad.Zip
+import Data.List
+import Data.Maybe
 import StackMap
 
 type TypeMapping = StackMap String Type
@@ -30,17 +32,12 @@ getConstructorType adts name = let
     buildType :: String -> [Type] -> Type
     buildType adtName = foldr TArrow (TData adtName)
     getConstructorType' :: ADT -> Maybe Type
-    getConstructorType' (ADT adtName branches) = foldl (\ res (conName, types) ->
-        case res of
-            Nothing -> if conName == name then Just $ buildType adtName types else Nothing
-            Just _ -> res
-        ) Nothing branches
-    in foldl (\ res adt ->
-        case (res, getConstructorType' adt) of
-            (Nothing, Nothing) -> Nothing
-            (Nothing, ret@(Just _)) -> ret
-            (Just _, _) -> res
-        ) Nothing adts
+    getConstructorType' (ADT adtName branches) = case find (\ (conName, _) -> conName == name) branches of
+        Nothing -> Nothing
+        Just (_, types) -> Just $ buildType adtName types
+    in case find (isJust . getConstructorType') adts of
+        Nothing -> Nothing
+        Just adt -> getConstructorType' adt
 
 eval :: Expr -> ContextState Type
 eval expr = let
