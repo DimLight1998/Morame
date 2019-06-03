@@ -5,6 +5,9 @@ type StackMap a b = [(a, b)]
 push :: (a, b) -> StackMap a b -> StackMap a b
 push p sm = p : sm
 
+pushMany :: [(a, b)] -> StackMap a b -> StackMap a b
+pushMany ps sm = ps ++ sm
+
 pop :: StackMap a b -> StackMap a b
 pop sm = case sm of
     [] -> error "empty stack"

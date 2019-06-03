@@ -6,13 +6,13 @@ import Control.Monad.State
 import Control.Monad.Zip
 import StackMap
 
-type Context = StackMap String Type
-
+type TypeMapping = StackMap String Type
+type Context = ([ADT], TypeMapping)
 type ContextState a = StateT Context Maybe a
 
-matchPatternWithType :: [ADT] -> Pattern -> Type -> Maybe Context
+matchPatternWithType :: [ADT] -> Pattern -> Type -> Maybe TypeMapping
 matchPatternWithType adts pat ty = let
-    matchPatternWithTypeAux :: [(String, [Type])] -> Pattern -> Type -> Maybe Context
+    matchPatternWithTypeAux :: [(String, [Type])] -> Pattern -> Type -> Maybe TypeMapping
     matchPatternWithTypeAux flatAdts pat ty = case pat of
         PBoolLit _ -> return []
         PIntLit _ -> return []
@@ -24,6 +24,23 @@ matchPatternWithType adts pat ty = let
             then concat <$> sequence (mzipWith (matchPatternWithTypeAux flatAdts) pats types)
             else Nothing
     in matchPatternWithTypeAux (adts >>= (\ (ADT _ s) -> s)) pat ty
+
+getConstructorType :: [ADT] -> String -> Maybe Type
+getConstructorType adts name = let
+    buildType :: String -> [Type] -> Type
+    buildType adtName = foldr TArrow (TData adtName)
+    getConstructorType' :: ADT -> Maybe Type
+    getConstructorType' (ADT adtName branches) = foldl (\ res (conName, types) ->
+        case res of
+            Nothing -> if conName == name then Just $ buildType adtName types else Nothing
+            Just _ -> res
+        ) Nothing branches
+    in foldl (\ res adt ->
+        case (res, getConstructorType' adt) of
+            (Nothing, Nothing) -> Nothing
+            (Nothing, ret@(Just _)) -> ret
+            (Just _, _) -> res
+        ) Nothing adts
 
 eval :: Expr -> ContextState Type
 eval expr = let
@@ -62,45 +79,67 @@ eval expr = let
         EGe e1 e2 -> isEquallyFrom (e1, e2) [TInt, TChar] >> return TBool
         EIf e1 e2 e3 -> isOfType e1 TBool >> isEqual (e2, e3)
         ELambda (n, tArg) eBody -> do
-            s <- get
-            put $ push (n, tArg) s
+            (adts, s) <- get
+            put (adts, push (n, tArg) s)
             tRet <- eval eBody
-            put s
+            put (adts, s)
             return $ TArrow tArg tRet
         ELet (n, e1) e2 -> do
             e1t <- eval e1
-            s <- get
-            put $ push (n, e1t) s
+            (adts, s) <- get
+            put (adts, push (n, e1t) s)
             e2t <- eval e2
-            put s
+            put (adts, s)
             return e2t
         ELetRec bind (arg, tArg) (body, tRet) expr -> do
-            state <- get
+            (adts, state) <- get
             let stateWithFunc = push (bind, TArrow tArg tRet) state
             let stateWithFuncAndArg = push (arg, tArg) stateWithFunc
-            put stateWithFuncAndArg
+            put (adts, stateWithFuncAndArg)
             tRet' <- eval body
             if tRet' == tRet
             then do
-                put stateWithFunc
+                put (adts, stateWithFunc)
                 t <- eval expr
-                put state
+                put (adts, state)
                 return t
             else do
-                put state
+                put (adts, state)
                 lift Nothing
         EVar n -> do
-            s <- get
-            lift $ lookUp n s
-        EApply e1 e2 -> do -- todo support ADT
+            (adts, s) <- get
+            -- with the support of ADT, `n` can be a constructor
+            -- if it is a constructor, it will have an arrow type
+            -- first check if it is a constructor, then lookup in current context
+            case getConstructorType adts n of
+                Nothing -> lift $ lookUp n s
+                Just tp -> return tp
+        EApply e1 e2 -> do
             e1t <- eval e1
             e2t <- eval e2
             case (e1t, e2t) of
                 (TArrow t1 t2, t3) -> if t1 == t3 then return t2 else lift Nothing
                 _ -> lift Nothing
         ECase expr pes -> do
-            et <- eval expr -- will get something like ""
-            undefined
+            et <- eval expr
+            (adts, currentTm) <- get
+            if null pes
+            then lift Nothing
+            else do
+                let (pats, exprs) = unzip pes
+                let maybeTypeMaps = mapM (\ p -> matchPatternWithType adts p et) pats
+                let
+                    evalAux :: (TypeMapping, Expr) -> ContextState Type
+                    evalAux (typeMap, expr) = do
+                        put (adts, pushMany typeMap currentTm)
+                        tp <- eval expr
+                        put (adts, currentTm)
+                        return tp
+                case maybeTypeMaps of
+                    Nothing -> lift Nothing
+                    Just typeMaps -> do 
+                        types <- mapM evalAux $ zip typeMaps exprs
+                        if all (== head types) types then return $ head types else lift Nothing
 
 evalType :: Program -> Maybe Type
-evalType (Program adts body) = evalStateT (eval body) []
+evalType (Program adts body) = evalStateT (eval body) (adts, [])
