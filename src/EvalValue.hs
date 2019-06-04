@@ -3,11 +3,12 @@ module EvalValue where
 
 import AST
 import Control.Monad.State
+import Control.Monad.Zip
 import qualified EvalType as T
 import StackMap
 
-type Context = StackMap String Value
-
+type ValueMapping = StackMap String Value
+type Context = ([ADT], ValueMapping)
 type ContextState a = StateT Context Maybe a
 
 data Value
@@ -15,7 +16,34 @@ data Value
   | VInt Int
   | VChar Char
   | VClosure Context String Expr
+  | VData String [Value]
   deriving (Show, Eq)
+
+matchPatternWithValue :: Pattern -> Value -> Maybe ValueMapping
+matchPatternWithValue pat val = case pat of
+    PBoolLit bool
+      | VBool bool' <- val -> if bool == bool' then return [] else Nothing
+    PIntLit int
+      | VInt int' <- val -> if int == int' then return [] else Nothing
+    PCharLit char
+      | VChar char' <- val -> if char == char' then return [] else Nothing
+    PVar s -> return [(s, val)]
+    PData name pats
+      | VData brName vs <- val, brName == name
+        -> concat <$> sequence (mzipWith matchPatternWithValue pats vs)
+      | VData brName vs <- val, brName /= name
+        -> Nothing
+
+getConstructorExpr :: [ADT] -> String -> Maybe Expr
+getConstructorExpr adts name = let
+    getConstructorValueAux :: [(String, [Type])] -> String -> Maybe Expr
+    getConstructorValueAux branches name = do
+        types <- lookup name branches
+        let argList = map EVar $ foldr (\ elem accu -> show (length accu) : accu) [] types
+        let treeWithAccu = foldr (\ tp (accu, i) -> (ELambda (show i, tp) accu, i + 1)) (EData name argList, 0) types
+        return $ fst treeWithAccu
+    in getConstructorValueAux (adts >>= (\ (ADT _ s) -> s)) name
+
 
 eval :: Expr -> ContextState Value
 eval expr = let
@@ -64,33 +92,55 @@ eval expr = let
             return $ VClosure s arg e
         ELet (b, be) e -> do
             br <- eval be
-            s <- get
-            put $ push (b, br) s
+            (adts, s) <- get
+            put (adts, push (b, br) s)
             ret <- eval e
-            put s
+            put (adts, s)
             return ret
         ELetRec bind (arg, _) (body, _) expr -> do
-            s <- get
-            let recContext = push (bind, VClosure recContext arg body) s -- todo include this in document
+            (adts, s) <- get
+            -- * include this in document
+            let recContext = (adts, push (bind, VClosure recContext arg body) s)
             put recContext
             ret <- eval expr
-            put s
+            put (adts, s)
             return ret
         EVar name -> do
-            s <- get
-            lift $ lookUp name s
+            (adts, s) <- get
+            -- with the support of ADT, `name` can be a constructor
+            case getConstructorExpr adts name of
+                Nothing -> lift $ lookUp name s
+                Just e -> eval e
         EApply e1 e2 -> do
-            VClosure context argName funcBody <- eval e1
+            VClosure (adts, valueMap) argName funcBody <- eval e1
             argVal <- eval e2
             backup <- get
-            put $ push (argName, argVal) context
+            put (adts, push (argName, argVal) valueMap)
             ret <- eval funcBody
             put backup
             return ret
-        ECase _ _ -> undefined -- todo support ADT
+        ECase expr pes -> do
+            val <- eval expr
+            (adts, currentVm) <- get
+            let
+                evalWithPatterns :: Value -> [(Pattern, Expr)] -> ContextState Value
+                evalWithPatterns val remain = case remain of
+                    [] -> lift Nothing
+                    (pat, expr) : remain -> case matchPatternWithValue pat val of
+                        Nothing -> evalWithPatterns val remain
+                        Just vm -> do
+                            put (adts, vm ++ currentVm)
+                            ret <- eval expr
+                            put (adts, currentVm)
+                            return ret
+            evalWithPatterns val pes
+        EData name exprs -> do
+            values <- mapM eval exprs
+            return $ VData name values
+
 
 evalProgram :: Program -> Maybe Value
-evalProgram (Program adts body) = evalStateT (eval body) []
+evalProgram (Program adts body) = evalStateT (eval body) (adts, [])
 
 evalValue :: Program -> Result
 evalValue p@(Program _ expr) = case T.evalType p of

@@ -194,6 +194,9 @@ data Expr
   --
   -- 如果你要实现的语言不支持模式匹配，就不用管这个构造函数。
 
+  | EData String [Expr]
+  -- ^This one should only be used internally.
+
   deriving (Show, Eq)
 
 

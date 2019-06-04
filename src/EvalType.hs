@@ -1,4 +1,3 @@
--- | 这是其中一种实现方式的代码框架。你可以参考它，或用你自己的方式实现，只要按需求完成 evalType :: Program -> Maybe Type 就行。
 module EvalType where
 
 import AST
@@ -14,18 +13,25 @@ type ContextState a = StateT Context Maybe a
 
 matchPatternWithType :: [ADT] -> Pattern -> Type -> Maybe TypeMapping
 matchPatternWithType adts pat ty = let
-    matchPatternWithTypeAux :: [(String, [Type])] -> Pattern -> Type -> Maybe TypeMapping
-    matchPatternWithTypeAux flatAdts pat ty = case pat of
-        PBoolLit _ -> return []
-        PIntLit _ -> return []
-        PCharLit _ -> return []
+    matchPatternWithTypeAux :: [(String, String)] -> [(String, [Type])] -> Pattern -> Type -> Maybe TypeMapping
+    matchPatternWithTypeAux brAdt flatAdts pat ty = case pat of
+        PBoolLit _ -> if ty == TBool then return [] else Nothing
+        PIntLit _ -> if ty == TInt then return [] else Nothing
+        PCharLit _ -> if ty == TChar then return [] else Nothing
         PVar s -> return [(s, ty)]
         PData name pats -> do
             types <- lookup name flatAdts
-            if length pats == length types
-            then concat <$> sequence (mzipWith (matchPatternWithTypeAux flatAdts) pats types)
-            else Nothing
-    in matchPatternWithTypeAux (adts >>= (\ (ADT _ s) -> s)) pat ty
+            adt <- lookup name brAdt
+            case ty of
+                TData s -> 
+                    if s == adt && length pats == length types
+                    then concat <$> sequence (mzipWith (matchPatternWithTypeAux brAdt flatAdts) pats types)
+                    else Nothing
+                _ -> Nothing
+    in matchPatternWithTypeAux
+        (adts >>= (\ (ADT adt s) -> map (\ (br, _) -> (br, adt)) s))
+        (adts >>= (\ (ADT _ s) -> s))
+        pat ty
 
 getConstructorType :: [ADT] -> String -> Maybe Type
 getConstructorType adts name = let
