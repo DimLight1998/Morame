@@ -139,7 +139,7 @@ eval expr = let
                     (pat, expr) : remain -> case matchPatternWithValue pat val of
                         Nothing -> evalWithPatterns val remain
                         Just vm -> do
-                            put (adts, vm ++ currentVm)
+                            put (adts, reverse vm ++ currentVm)
                             ret <- eval expr
                             put (adts, currentVm)
                             return ret

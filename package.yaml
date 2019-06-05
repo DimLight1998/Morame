@@ -25,6 +25,8 @@ dependencies:
 - mtl
 - containers
 - parsec
+- tasty
+- tasty-hunit
 
 library:
   source-dirs: src
