@@ -109,7 +109,6 @@ eval expr = let
             return ret
         ELetRec bind (arg, _) (body, _) expr -> do
             (adts, s) <- get
-            -- * include this in document
             let recContext = (adts, push (bind, VClosure recContext arg body) s)
             put recContext
             ret <- eval expr
