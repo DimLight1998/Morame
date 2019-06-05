@@ -17,7 +17,17 @@ data Value
   | VChar Char
   | VClosure Context String Expr
   | VData String [Value]
-  deriving (Show, Eq)
+  | VUnit -- should only be used in REPL
+  deriving (Eq)
+
+instance Show Value where
+    show value = case value of
+        VBool b -> if b then "true" else "false"
+        VInt i -> show i
+        VChar c -> show c
+        VClosure {} -> "<func>"
+        VData s vs -> s ++ " " ++ show vs
+        VUnit -> "()"
 
 matchPatternWithValue :: Pattern -> Value -> Maybe ValueMapping
 matchPatternWithValue pat val = case pat of
@@ -140,15 +150,21 @@ eval expr = let
 
 
 evalProgram :: Program -> Maybe Value
-evalProgram (Program adts body) = evalStateT (eval body) (adts, [])
+evalProgram p@(Program adts body) = case T.evalType p of
+    Nothing -> Nothing
+    Just _ -> evalStateT (eval body) (adts, [])
 
 evalValue :: Program -> Result
-evalValue p@(Program _ expr) = case T.evalType p of
-    Nothing -> RInvalid
-    Just _ -> case evalProgram p of
+evalValue p@(Program _ expr) = case evalProgram p of
         Nothing -> RInvalid
         Just value -> case value of
             VBool b -> RBool b
             VInt i -> RInt i
             VChar c -> RChar c
             _ -> RInvalid
+
+evalValueWithCtx :: (Context, T.Context) -> Expr -> Maybe (Value, Type)
+evalValueWithCtx (ctx, tctx) expr = do
+    tp <- T.evalTypeWithCtx tctx expr
+    val <- evalStateT (eval expr) ctx
+    return (val, tp)

@@ -200,25 +200,56 @@ caseExpr = let
         branches <- sepBy branch semi
         return $ ECase e branches
 
--- ADT parser
+-- unit parsers
+lexeme :: Parser a -> Parser a
+lexeme x = spaces >> x
 
-adt :: Parser ADT
-adt = let
+adtParser :: Parser ADT
+adtParser = let
     branch :: Parser (String, [Type])
     branch = (,) <$> identifier <*> brackets (many typeAnnotation)
     in do
-        reserved "data"
+        lexeme $ reserved "data"
         adtName <- identifier
         reservedOp "="
         branches <- sepBy branch (reservedOp "|")
         return $ ADT adtName branches
 
--- main parser
+bindingParser :: Parser (String, Expr)
+bindingParser = do
+    ident <- lexeme identifier
+    reservedOp "="
+    e <- expr
+    return (ident, e)
 
-morameParser :: String -> Maybe Program
-morameParser s = case parse (whiteSpace >> morameParser') "" s of
+exprParser :: Parser Expr
+exprParser = lexeme expr
+
+data Unit = Expression Expr | Binding (String, Expr) | ADTDef ADT
+
+unitParser :: Parser Unit
+unitParser = choice $ map try
+    [ Expression <$> exprParser
+    , Binding <$> bindingParser
+    , ADTDef <$> adtParser
+    ]
+
+unitsParser :: Parser [Unit]
+unitsParser = many unitParser
+
+-- REPL utils
+
+parseADT :: String -> Maybe ADT
+parseADT s = case parse adtParser "" s of
     Left _ -> Nothing
-    Right p -> Just p
+    Right adt -> Just adt
 
-morameParser' :: Parser Program
-morameParser' = Program <$> many adt <*> expr
+parseBinding :: String -> Maybe (String, Expr)
+parseBinding s = case parse bindingParser "" s of
+    Left _ -> Nothing
+    Right res -> Just res
+
+parseExpr :: String -> Maybe Expr
+parseExpr s = case parse exprParser "" s of
+    Left _ -> Nothing
+    Right res -> Just res

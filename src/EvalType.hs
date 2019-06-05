@@ -146,3 +146,6 @@ eval expr = let
 
 evalType :: Program -> Maybe Type
 evalType (Program adts body) = evalStateT (eval body) (adts, [])
+
+evalTypeWithCtx :: Context -> Expr -> Maybe Type
+evalTypeWithCtx ctx body = evalStateT (eval body) ctx
