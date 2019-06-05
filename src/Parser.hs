@@ -197,7 +197,7 @@ caseExpr = let
         reserved "case"
         e <- expr
         reserved "of"
-        branches <- sepBy branch semi
+        branches <- sepBy branch (reservedOp "|")
         return $ ECase e branches
 
 -- unit parsers
@@ -225,17 +225,22 @@ bindingParser = do
 exprParser :: Parser Expr
 exprParser = lexeme expr
 
-data Unit = Expression Expr | Binding (String, Expr) | ADTDef ADT
+data Unit = Expression Expr | Binding (String, Expr) | ADTDef ADT deriving (Show)
 
 unitParser :: Parser Unit
 unitParser = choice $ map try
-    [ Expression <$> exprParser
-    , Binding <$> bindingParser
+    [ Binding <$> bindingParser
+    , Expression <$> exprParser
     , ADTDef <$> adtParser
     ]
 
 unitsParser :: Parser [Unit]
-unitsParser = many unitParser
+unitsParser = endBy unitParser semi
+
+parseUnits :: String -> Maybe [Unit]
+parseUnits s = case parse unitsParser "" s of
+    Left _ -> Nothing
+    Right res -> Just res
 
 -- REPL utils
 

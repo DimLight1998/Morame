@@ -32,6 +32,21 @@ evalLine line = do
             , Just (val, tp) <- V.evalValueWithCtx ((adts, vm), (adts, tm)) expr = return val
             | otherwise = lift Nothing
 
+evalUnits :: [Unit] -> StateT Context Maybe [V.Value]
+evalUnits units = let
+    evalUnit :: Unit -> StateT Context Maybe V.Value
+    evalUnit unit = do
+        (adts, vm, tm) <- get
+        case unit of
+            Expression expr -> case V.evalValueWithCtx ((adts, vm), (adts, tm)) expr of
+                Nothing -> lift Nothing
+                Just (val , tp) -> return val
+            Binding (name, expr) -> case V.evalValueWithCtx ((adts, vm), (adts, tm)) expr of
+                Nothing -> lift Nothing
+                Just (val, tp) -> put (adts, push (name, val) vm, push (name, tp) tm) >> return V.VUnit
+            ADTDef adt -> put (adt : adts, vm, tm) >> return V.VUnit
+    in mapM evalUnit units
+
 loop :: Context -> IO ()
 loop ctx@(adts, vm, tm) = do
     line <- getLine
@@ -39,17 +54,28 @@ loop ctx@(adts, vm, tm) = do
     then let
         switch :: IO ()
         switch
-          | ":t" `isPrefixOf` line = do
-            let expr = drop 3 line
-            case parseExpr expr of
-                Nothing -> print "[Error] Invalid expression." >> loop ctx
-                Just expr -> case T.evalTypeWithCtx (adts, tm) expr of
-                    Nothing -> print "Type checking failed." >> loop ctx
-                    Just tp -> print tp >> loop ctx
+          | ":type" `isPrefixOf` line = do
+                let expr = drop 5 line
+                case parseExpr expr of
+                    Nothing -> putStrLn "[Error] Invalid expression." >> loop ctx
+                    Just expr -> case T.evalTypeWithCtx (adts, tm) expr of
+                        Nothing -> putStrLn "Type checking failed." >> loop ctx
+                        Just tp -> print tp >> loop ctx
           | ":env" `isPrefixOf` line = do
-            print ctx
-            loop ctx
-          | ":q" `isPrefixOf` line = putStrLn "bye"
+                print ctx
+                loop ctx
+          | ":reset" `isPrefixOf` line = loop ([], [], [])
+          | ":run" `isPrefixOf` line = do
+                let fileName = head $ tail $ words line
+                content <- readFile fileName
+                case parseUnits content of
+                    Nothing -> putStrLn "[Error] Invalid program." >> loop ctx
+                    Just units -> let 
+                        st = evalUnits units
+                        in case runStateT st ctx of
+                            Nothing -> putStrLn "[Error] Invalid program." >> loop ctx
+                            Just (res, ctx') -> mapM_ print (filter (/= V.VUnit) res) >> loop ctx'
+          | ":quit" `isPrefixOf` line = putStrLn "bye"
           | otherwise = putStrLn "[Error] Command not understood." >> loop ctx
         in switch
     else do
