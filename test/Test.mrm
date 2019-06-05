@@ -1,0 +1,15 @@
+data MaybeInt = Nothing [] | Just [Int]
+
+-- letrec fac(x: Int): Int = if x == 0 then 1 else x * fac (x - 1) in fac(10)
+
+{-
+let
+    flatMap = (x: MaybeInt) => case x of
+        Nothing [] -> Nothing;
+        Just [y] -> Just (y + 1)
+    in case flatMap (Just 3) of
+        Nothing [] -> 0;
+        Just [t] -> t
+-}
+
+3

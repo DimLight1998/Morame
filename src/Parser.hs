@@ -13,6 +13,10 @@ langDef :: LanguageDef ()
 langDef = emptyDef
     { identStart = letter
     , identLetter = alphaNum
+    , commentStart = "{-"
+    , commentEnd = "-}"
+    , commentLine = "--"
+    , nestedComments = False
     , opStart = oneOf "-!&|+*/%=<>:~"
     , opLetter = oneOf "&|=>"
     , reservedNames =
@@ -27,12 +31,13 @@ langDef = emptyDef
         , "case"
         , "of"
         , "end"
+        , "data"
         , "Int"
         , "Char"
         , "Bool"
         ]
     , reservedOpNames =
-        [ "-", "+", "*", "/", "%", "~"
+        [ "-", "+", "*", "/", "%", "~", "|"
         , "!", "&&", "||"
         , "==", "!=", "<", ">", "<=", ">="
         , "=>", "->", "="
@@ -48,7 +53,11 @@ reservedOp = T.reservedOp lexer
 natural = T.natural lexer
 charLiteral = T.charLiteral lexer
 parens = T.parens lexer
+brackets = T.brackets lexer
 colon = T.colon lexer
+semi = T.semi lexer
+
+-- type parser
 
 typeAnnotation :: Parser Type
 typeAnnotation = let
@@ -62,8 +71,38 @@ typeAnnotation = let
     opTable = [[Infix (reservedOp "->" >> return TArrow) AssocRight]]
     in buildExpressionParser opTable singleType
 
-morameParser :: Parser Expr
-morameParser = whiteSpace >> expr
+-- pattern parser
+
+patt :: Parser Pattern
+patt = choice $ map try
+    [ parens patt
+    , boolLitPattern
+    , intLitPattern
+    , charLitPattern
+    , dataPattern
+    , varPattern
+    ]
+
+boolLitPattern :: Parser Pattern
+boolLitPattern =
+        (reserved "true" >> return (PBoolLit True))
+    <|> (reserved "false" >> return (PBoolLit False))
+
+intLitPattern :: Parser Pattern
+intLitPattern =
+        (PIntLit . fromInteger <$> natural) 
+    <|> (PIntLit . fromInteger . negate <$> (reservedOp "~" >> natural))
+
+charLitPattern :: Parser Pattern
+charLitPattern = PCharLit <$> charLiteral
+
+varPattern :: Parser Pattern
+varPattern = PVar <$> identifier
+
+dataPattern :: Parser Pattern
+dataPattern = PData <$> identifier <*> brackets (many patt)
+
+-- expression parser
 
 opTable :: OperatorTable Char () Expr
 opTable =
@@ -103,6 +142,7 @@ singleExpr = choice $ map try
     , letExpr
     , letRecExpr
     , varExpr
+    , caseExpr
     , parens expr
     ]
 
@@ -148,3 +188,37 @@ letRecExpr = do
 
 varExpr :: Parser Expr
 varExpr = EVar <$> identifier
+
+caseExpr :: Parser Expr
+caseExpr = let
+    branch :: Parser (Pattern, Expr)
+    branch = (,) <$> patt <*> (reservedOp "->" >> expr)
+    in do
+        reserved "case"
+        e <- expr
+        reserved "of"
+        branches <- sepBy branch semi
+        return $ ECase e branches
+
+-- ADT parser
+
+adt :: Parser ADT
+adt = let
+    branch :: Parser (String, [Type])
+    branch = (,) <$> identifier <*> brackets (many typeAnnotation)
+    in do
+        reserved "data"
+        adtName <- identifier
+        reservedOp "="
+        branches <- sepBy branch (reservedOp "|")
+        return $ ADT adtName branches
+
+-- main parser
+
+morameParser :: String -> Maybe Program
+morameParser s = case parse (whiteSpace >> morameParser') "" s of
+    Left _ -> Nothing
+    Right p -> Just p
+
+morameParser' :: Parser Program
+morameParser' = Program <$> many adt <*> expr
