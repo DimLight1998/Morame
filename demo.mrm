@@ -1,0 +1,53 @@
+data MaybeInt = Nothing [] | Just [Int];
+data IntList = Nil [] | Cons [Int IntList];
+
+map = (f: Int -> Int) =>
+    letrec mapAux(xs: IntList): IntList = case xs of {
+        Nil [] -> Nil
+      | Cons [x r] -> Cons (f x) (mapAux r)
+      }
+    in mapAux;
+
+filter = (f: Int -> Bool) =>
+    letrec filterAux(xs: IntList): IntList = case xs of {
+        Nil [] -> Nil
+      | Cons [x r] -> let rs = filterAux r in if f x then Cons x rs else rs
+      }
+    in filterAux;
+
+listEq = letrec listEqAux(xs: IntList): (IntList -> Bool) =
+    (ys: IntList) => case ys of {
+        Nil [] -> case xs of {
+            Nil [] -> true
+          | _ -> false
+          }
+      | Cons [y yr] -> case xs of {
+            Cons [x xr] -> if x == y then listEqAux xr yr else false
+          | _ -> false
+          }
+      }
+    in listEqAux;
+
+safeDiv = (a: Int) => (b: Int) => if b == 0 then Nothing else Just (a / b);
+
+list1 = Cons 1 (Cons 2 Nil);
+list2 = Cons 1 (Cons 2 Nil);
+list3 = Cons 1 (Cons 3 Nil);
+list4 = Cons 1 Nil;
+list5 = Cons 1 (Cons 2 (Cons 3 Nil));
+
+res1 = safeDiv 7 2;
+res2 = safeDiv 7 0;
+res3 = listEq list1 list2;
+res4 = listEq list1 list3;
+res5 = listEq list1 list4;
+res6 = map ((x: Int) => x * x) list5;
+res7 = filter ((x: Int) => x % 2 == 0) list5;
+
+prog1 = true;
+prog2 = 40 + 2;
+prog3 = '@' != '@';
+prog4 = if false then 42 else 233;
+prog5 = (x: Int) => x + 1;
+prog6 = let even = (x: Int) => x % 2 == 0 in even 42;
+prog7 = letrec fact(x: Int): Int = if x == 0 then 1 else x * fact(x - 1) in fact 5;

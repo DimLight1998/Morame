@@ -20,7 +20,7 @@
 - 一个简单的 REPL
 - 易读性较好的文法设计和对应的 parser
 
-下面是程序能够接受的代码示例，以及对应的说明。
+下面是程序能够接受的代码示例，以及对应的说明。此外，项目根目录下有个 demo.mrm 文件可以作为参考。
 
 **定义新的代数数据类型**：
 
@@ -35,12 +35,13 @@ data EitherMaybeOrBoolFunc = Left [MaybeInt] | Right [Bool -> Bool];
 
 ```text
 fakeBind =
-  (a: MaybeInt) => (b: Int -> MaybeInt) => case a of
+  (a: MaybeInt) => (b: Int -> MaybeInt) => case a of {
       Nothing [] -> Nothing
-    | Just [x] -> b x;
+    | Just [x] -> b x
+    };
 ```
 
-模式匹配中 ADT 的模式需要中括号是为了将不带参数的构造子和变量绑定区分开（上面的例子中如果没有 `[]` 在 parsing 时会不知道 `Nothing` 到底是构造子还是变量），不同的模式使用 `|` 进行区分。*绑定* 指的是直接将变量加入到环境中，和 `let` 语句不同。
+模式匹配中 ADT 的模式需要中括号是为了将不带参数的构造子和变量绑定区分开（上面的例子中如果没有 `[]` 在 parsing 时会不知道 `Nothing` 到底是构造子还是变量），不同的模式使用 `|` 进行区分，用 `{}` 括起。*绑定* 指的是直接将变量加入到环境中，和 `let` 语句不同。
 
 **函数应用** 和 Haskell 中的一样：
 

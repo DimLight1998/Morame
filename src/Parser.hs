@@ -11,8 +11,8 @@ import AST
 
 langDef :: LanguageDef ()
 langDef = emptyDef
-    { identStart = letter
-    , identLetter = alphaNum
+    { identStart = letter <|> char '_'
+    , identLetter = alphaNum <|> char '_'
     , commentStart = "{-"
     , commentEnd = "-}"
     , commentLine = "--"
@@ -54,6 +54,7 @@ natural = T.natural lexer
 charLiteral = T.charLiteral lexer
 parens = T.parens lexer
 brackets = T.brackets lexer
+braces = T.braces lexer
 colon = T.colon lexer
 semi = T.semi lexer
 
@@ -197,7 +198,7 @@ caseExpr = let
         reserved "case"
         e <- expr
         reserved "of"
-        branches <- sepBy branch (reservedOp "|")
+        branches <- braces (sepBy branch (reservedOp "|"))
         return $ ECase e branches
 
 -- unit parsers
